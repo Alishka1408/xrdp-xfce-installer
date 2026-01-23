@@ -19,19 +19,28 @@ echo
 # USER INPUT
 # --------------------------------------------------
 
+read -rp "Enter username to create for RDP [user]: " USERNAME
+USERNAME=${USERNAME:-user}
+
+# Basic username validation (Linux user rules simplified)
+if ! [[ "$USERNAME" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
+  echo "ERROR: Invalid username. Use lowercase letters, numbers, '_' or '-', and start with a letter or '_'." >&2
+  exit 1
+fi
+
 read -rp "Do you want to restrict RDP access to a specific IP? [y/N]: " LIMIT_RDP
 LIMIT_RDP=${LIMIT_RDP:-N}
 
 if [[ "$LIMIT_RDP" =~ ^[Yy]$ ]]; then
   read -rp "Enter allowed public IP for RDP (3389): " ALLOWED_IP
   if [[ -z "$ALLOWED_IP" ]]; then
-    echo "ERROR: IP address cannot be empty"
+    echo "ERROR: IP address cannot be empty" >&2
     exit 1
   fi
 fi
 
 echo
-echo "Enter password for Linux user 'user'"
+echo "Enter password for Linux user '$USERNAME'"
 echo "(minimum 8 characters, strong password recommended)"
 read -rsp "Password: " USER_PASSWORD
 echo
@@ -39,12 +48,12 @@ read -rsp "Confirm password: " USER_PASSWORD_CONFIRM
 echo
 
 if [[ "$USER_PASSWORD" != "$USER_PASSWORD_CONFIRM" ]]; then
-  echo "ERROR: Passwords do not match"
+  echo "ERROR: Passwords do not match" >&2
   exit 1
 fi
 
 if [[ "${#USER_PASSWORD}" -lt 8 ]]; then
-  echo "ERROR: Password too short"
+  echo "ERROR: Password too short" >&2
   exit 1
 fi
 
@@ -91,25 +100,27 @@ fi
 # CREATE USER
 # --------------------------------------------------
 
-echo "[5/9] Creating user 'user'"
-if ! id user &>/dev/null; then
-  adduser --disabled-password --gecos "" user
+echo "[5/9] Creating user '$USERNAME'"
+if ! id "$USERNAME" &>/dev/null; then
+  adduser --disabled-password --gecos "" "$USERNAME"
 fi
 
-echo "user:${USER_PASSWORD}" | chpasswd
-usermod -aG sudo user
+echo "${USERNAME}:${USER_PASSWORD}" | chpasswd
+usermod -aG sudo "$USERNAME"
 
 # Fix home permissions for XRDP stability (CRITICAL)
-chmod 755 /home/user
+if [[ -d "/home/$USERNAME" ]]; then
+  chmod 755 "/home/$USERNAME"
+fi
 
 # --------------------------------------------------
 # XFCE SESSION FOR XRDP (CRITICAL)
 # --------------------------------------------------
 
-echo "[6/9] Configuring XFCE session"
-echo "exec startxfce4" > /home/user/.xsession
-chown user:user /home/user/.xsession
-chmod 644 /home/user/.xsession
+echo "[6/9] Configuring XFCE session for '$USERNAME'"
+echo "exec startxfce4" > "/home/$USERNAME/.xsession"
+chown "$USERNAME:$USERNAME" "/home/$USERNAME/.xsession"
+chmod 644 "/home/$USERNAME/.xsession"
 
 # --------------------------------------------------
 # FIREWALL CONFIGURATION
@@ -124,7 +135,7 @@ ufw allow 22/tcp
 # Remove existing RDP rules
 while ufw status numbered 2>/dev/null | grep -q "3389/tcp"; do
   RULE_NUM=$(ufw status numbered | awk '/3389\/tcp/ {gsub(/\[|\]/,"",$1); print $1; exit}')
-  yes | env LC_ALL=C ufw delete "$RULE_NUM" || break
+  yes | env LC_ALL=C LANG=C ufw delete "$RULE_NUM" || break
 done
 
 if [[ "$LIMIT_RDP" =~ ^[Yy]$ ]]; then
@@ -143,12 +154,15 @@ ufw --force enable
 
 echo "[8/9] Installing Google Chrome"
 DEBIAN_FRONTEND=noninteractive apt install -y wget ca-certificates gnupg
+
 CHROME_DEB="/tmp/google-chrome-stable_current_amd64.deb"
 wget -qO "$CHROME_DEB" https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+
 if ! apt install -y "$CHROME_DEB"; then
   apt -f install -y
   apt install -y "$CHROME_DEB"
 fi
+
 rm -f "$CHROME_DEB"
 
 # --------------------------------------------------
@@ -159,7 +173,7 @@ echo "[9/9] Installation completed"
 echo
 echo "=================================================="
 echo " XRDP + XFCE installation finished"
-echo " User: user"
+echo " RDP user: $USERNAME"
 if [[ "$LIMIT_RDP" =~ ^[Yy]$ ]]; then
   echo " RDP access: restricted to $ALLOWED_IP"
 else
