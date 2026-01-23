@@ -3,9 +3,6 @@ set -euo pipefail
 
 # ==================================================
 # XRDP + XFCE Remote Desktop Installer (Ubuntu/Debian)
-# Usage:
-#   sudo -i
-#   bash <(curl -fsSL https://raw.githubusercontent.com/USERNAME/REPO/main/install.sh)
 # ==================================================
 
 if [[ "$EUID" -ne 0 ]]; then
@@ -55,7 +52,7 @@ fi
 # SYSTEM UPDATE
 # --------------------------------------------------
 
-echo "[1/8] Updating system"
+echo "[1/9] Updating system"
 apt update
 DEBIAN_FRONTEND=noninteractive apt upgrade -y
 
@@ -63,23 +60,38 @@ DEBIAN_FRONTEND=noninteractive apt upgrade -y
 # INSTALL XFCE
 # --------------------------------------------------
 
-echo "[2/8] Installing XFCE"
+echo "[2/9] Installing XFCE"
 DEBIAN_FRONTEND=noninteractive apt install -y xfce4 xfce4-goodies
 
 # --------------------------------------------------
-# INSTALL XRDP
+# INSTALL XRDP + XORG BACKEND (CRITICAL)
 # --------------------------------------------------
 
-echo "[3/8] Installing XRDP"
-DEBIAN_FRONTEND=noninteractive apt install -y xrdp
+echo "[3/9] Installing XRDP and Xorg backend"
+DEBIAN_FRONTEND=noninteractive apt install -y xrdp xorgxrdp xserver-xorg-core
 systemctl enable xrdp
 systemctl restart xrdp
+
+# --------------------------------------------------
+# (OPTIONAL) Disable Wayland for GDM3 if present
+# --------------------------------------------------
+
+if dpkg -l | grep -qE '^ii\s+gdm3\s'; then
+  echo "[4/9] Disabling Wayland (gdm3 detected)"
+  mkdir -p /etc/gdm3
+  cat > /etc/gdm3/custom.conf <<'EOF'
+[daemon]
+WaylandEnable=false
+EOF
+else
+  echo "[4/9] Skipping Wayland disable (gdm3 not installed)"
+fi
 
 # --------------------------------------------------
 # CREATE USER
 # --------------------------------------------------
 
-echo "[4/8] Creating user 'user'"
+echo "[5/9] Creating user 'user'"
 if ! id user &>/dev/null; then
   adduser --disabled-password --gecos "" user
 fi
@@ -87,26 +99,30 @@ fi
 echo "user:${USER_PASSWORD}" | chpasswd
 usermod -aG sudo user
 
+# Fix home permissions for XRDP stability (CRITICAL)
+chmod 755 /home/user
+
 # --------------------------------------------------
-# XFCE SESSION FOR XRDP
+# XFCE SESSION FOR XRDP (CRITICAL)
 # --------------------------------------------------
 
-echo "[5/8] Configuring XFCE session"
-echo "xfce4-session" > /home/user/.xsession
+echo "[6/9] Configuring XFCE session"
+echo "exec startxfce4" > /home/user/.xsession
 chown user:user /home/user/.xsession
+chmod 644 /home/user/.xsession
 
 # --------------------------------------------------
 # FIREWALL CONFIGURATION
 # --------------------------------------------------
 
-echo "[6/8] Configuring UFW firewall"
-apt install -y ufw
+echo "[7/9] Configuring UFW firewall"
+DEBIAN_FRONTEND=noninteractive apt install -y ufw
 
-# Always allow SSH
+# Always allow SSH to prevent lockout
 ufw allow 22/tcp
 
 # Remove existing RDP rules
-while ufw status numbered | grep -q "3389/tcp"; do
+while ufw status numbered 2>/dev/null | grep -q "3389/tcp"; do
   RULE_NUM=$(ufw status numbered | awk '/3389\/tcp/ {gsub(/\[|\]/,"",$1); print $1; exit}')
   yes | env LC_ALL=C ufw delete "$RULE_NUM" || break
 done
@@ -125,18 +141,19 @@ ufw --force enable
 # INSTALL BROWSERS
 # --------------------------------------------------
 
-echo "[7/8] Installing browsers"
+echo "[8/9] Installing browsers"
+DEBIAN_FRONTEND=noninteractive apt install -y wget ca-certificates
 wget -qO /tmp/chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-apt install -y /tmp/chrome.deb || apt -f install -y
+apt install -y /tmp/chrome.deb || (apt -f install -y && apt install -y /tmp/chrome.deb)
 rm -f /tmp/chrome.deb
 
-apt install -y firefox
+DEBIAN_FRONTEND=noninteractive apt install -y firefox || true
 
 # --------------------------------------------------
 # DONE
 # --------------------------------------------------
 
-echo "[8/8] Installation completed"
+echo "[9/9] Installation completed"
 echo
 echo "=================================================="
 echo " XRDP + XFCE installation finished"
@@ -146,4 +163,5 @@ if [[ "$LIMIT_RDP" =~ ^[Yy]$ ]]; then
 else
   echo " RDP access: open (all IPs)"
 fi
+echo " Recommended: reboot the server before first RDP login."
 echo "=================================================="
