@@ -138,16 +138,18 @@ fi
 ufw --force enable
 
 # --------------------------------------------------
-# INSTALL BROWSERS
+# INSTALL BROWSER (Google Chrome)
 # --------------------------------------------------
 
-echo "[8/9] Installing browsers"
-DEBIAN_FRONTEND=noninteractive apt install -y wget ca-certificates
-wget -qO /tmp/chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-apt install -y /tmp/chrome.deb || (apt -f install -y && apt install -y /tmp/chrome.deb)
-rm -f /tmp/chrome.deb
-
-DEBIAN_FRONTEND=noninteractive apt install -y firefox || true
+echo "[8/9] Installing Google Chrome"
+DEBIAN_FRONTEND=noninteractive apt install -y wget ca-certificates gnupg
+CHROME_DEB="/tmp/google-chrome-stable_current_amd64.deb"
+wget -qO "$CHROME_DEB" https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+if ! apt install -y "$CHROME_DEB"; then
+  apt -f install -y
+  apt install -y "$CHROME_DEB"
+fi
+rm -f "$CHROME_DEB"
 
 # --------------------------------------------------
 # DONE
