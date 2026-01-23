@@ -36,4 +36,4 @@ Run the installer as root:
 
 ```bash
 sudo -i
-bash <(curl -fsSL https://raw.githubusercontent.com/Alishka1408/xrdp-xfce-installer/main/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/Alishka1408/xrdp-xfce-installer/refs/heads/main/install.sh)
