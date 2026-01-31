@@ -78,8 +78,27 @@ DEBIAN_FRONTEND=noninteractive apt install -y xfce4 xfce4-goodies
 
 echo "[3/9] Installing XRDP and Xorg backend"
 DEBIAN_FRONTEND=noninteractive apt install -y xrdp xorgxrdp xserver-xorg-core
+
+# Enable and start XRDP
 systemctl enable xrdp
 systemctl restart xrdp
+
+# --------------------------------------------------
+# XRDP TLS KEY PERMISSIONS (CRITICAL)
+# Allows XRDP to access /etc/xrdp/key.pem securely
+# --------------------------------------------------
+
+if getent group ssl-cert >/dev/null; then
+  chown root:ssl-cert /etc/xrdp/key.pem
+  chmod 640 /etc/xrdp/key.pem
+  usermod -aG ssl-cert xrdp
+fi
+
+# Ensure runtime directory exists with correct permissions
+install -d -m 0755 -o xrdp -g xrdp /run/xrdp
+
+# Restart XRDP to apply changes
+systemctl restart xrdp xrdp-sesman
 
 # --------------------------------------------------
 # (OPTIONAL) Disable Wayland for GDM3 if present
@@ -120,7 +139,7 @@ fi
 echo "[6/9] Configuring XFCE session for '$USERNAME'"
 echo "exec startxfce4" > "/home/$USERNAME/.xsession"
 chown "$USERNAME:$USERNAME" "/home/$USERNAME/.xsession"
-chmod 644 "/home/$USERNAME/.xsession"
+chmod 755 "/home/$USERNAME/.xsession"
 
 # --------------------------------------------------
 # FIREWALL CONFIGURATION
